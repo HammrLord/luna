@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform, Image, Modal } from 'react-native';
+import { Audio } from 'expo-av';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +9,7 @@ import Animated, { FadeInUp, FadeInDown, useAnimatedStyle, useSharedValue, withR
 import { useUser } from '../context/UserContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LunaMascot } from '../components/LunaMascot';
+import { API_ENDPOINTS } from '../services/api.config';
 
 interface Message {
     id: string;
@@ -59,43 +61,216 @@ export const ChatbotScreen = () => {
     const [inputText, setInputText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [voiceModeVisible, setVoiceModeVisible] = useState(false);
+    const [voiceInputText, setVoiceInputText] = useState('');
+    const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const flatListRef = useRef<FlatList>(null);
 
-    const sendMessage = () => {
-        if (inputText.trim().length === 0) return;
+    // Voice Settings - Simple toggle for Luna to speak responses
+    const [speakEnabled, setSpeakEnabled] = useState(true);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+
+    // Audio Setup
+    useEffect(() => {
+        (async () => {
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+            });
+        })();
+    }, []);
+
+
+    // Voice State for STT
+
+    const startRecording = async () => {
+        try {
+            // Request permissions first
+            const perm = await Audio.requestPermissionsAsync();
+            if (perm.status !== "granted") {
+                alert("Microphone permission is required!");
+                return;
+            }
+
+            // Ensure any previous recording is cleaned up
+            if (recording) {
+                try {
+                    await recording.stopAndUnloadAsync();
+                } catch (e) {
+                    // Ignore already stopped error
+                }
+                setRecording(null);
+            }
+
+            // Set audio mode for recording
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: true,
+                playsInSilentModeIOS: true,
+            });
+
+            const { recording: newRecording } = await Audio.Recording.createAsync(
+                Audio.RecordingOptionsPresets.HIGH_QUALITY
+            );
+            setRecording(newRecording);
+            setIsSpeaking(true); // Reuse this state to show 'listening' UI or make a new one? 
+            // Actually 'isSpeaking' means Luna is speaking. We need a 'isListening' state or reuse 'voiceModeVisible' context.
+            // Let's use a temporary transcript state to show "Listening..."
+        } catch (err) {
+            console.error('Failed to start recording', err);
+        }
+    };
+
+    const stopRecording = async () => {
+        if (!recording) return;
+
+        try {
+            await recording.stopAndUnloadAsync();
+            const uri = recording.getURI();
+            setRecording(null);
+
+            // Reset audio mode to playback
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: false,
+                playsInSilentModeIOS: true,
+            });
+
+            if (uri) {
+                uploadAudio(uri);
+            }
+        } catch (err) {
+            console.error('Failed to stop recording', err);
+            setRecording(null);
+        }
+    };
+
+    const uploadAudio = async (uri: string) => {
+        try {
+            // Read file as base64
+            const response = await fetch(uri);
+            const blob = await response.blob();
+
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64Audio = reader.result as string;
+
+                try {
+                    const apiResponse = await fetch(API_ENDPOINTS.STT, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ audio: base64Audio }),
+                    });
+
+                    const data = await apiResponse.json();
+
+                    if (data.success && data.transcript) {
+                        // Automatically send the transcribed text
+                        sendMessage(data.transcript, true);
+                    } else {
+                        console.error('STT Error:', data.error);
+                    }
+                } catch (error) {
+                    console.error('STT Request Error:', error);
+                }
+            };
+            reader.readAsDataURL(blob);
+        } catch (error) {
+            console.error('Audio read error:', error);
+        }
+    };
+
+    const playResponseAudio = async (text: string) => {
+        if (!text) return;
+        try {
+            const response = await fetch(API_ENDPOINTS.TTS, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text }),
+            });
+
+            if (!response.ok) {
+                console.error('TTS request failed');
+                return;
+            }
+
+            // Get audio blob and play it
+            const audioBlob = await response.blob();
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64data = reader.result as string;
+                const { sound } = await Audio.Sound.createAsync(
+                    { uri: base64data },
+                    { shouldPlay: true }
+                );
+                // Auto-unload when done
+                sound.setOnPlaybackStatusUpdate((status) => {
+                    if (status.isLoaded && status.didJustFinish) {
+                        sound.unloadAsync();
+                    }
+                });
+            };
+            reader.readAsDataURL(audioBlob);
+        } catch (e) {
+            console.error('TTS Error:', e);
+        }
+    };
+
+    const sendMessage = async (overrideText?: string, shouldSpeak: boolean = false) => {
+        const userMsgText = overrideText || inputText.trim();
+        if (userMsgText.length === 0) return;
 
         const newUserMessage: Message = {
             id: Date.now().toString(),
-            text: inputText,
+            text: userMsgText,
             sender: 'user',
             timestamp: new Date(),
         };
 
         setMessages(prev => [...prev, newUserMessage]);
-        setInputText('');
+        if (!overrideText) setInputText(''); // Only clear main input if not overriding
         setIsTyping(true);
 
-        // Simulate thoughtful response time
-        setTimeout(() => {
-            const responses = [
-                "Honestly, I totally get that. It's so frustrating when your body doesn't cooperate. 🥺",
-                "You're doing amazing, even if it doesn't feel like it today. ✨ Have you drank enough water?",
-                "That sounds super tough. Do you think it's related to your cycle phase?",
-                "I'm sending you a virtual hug! 🤗 Remember to be kind to yourself.",
-                "Ooh, that's a great question! Based on your logs, it might be stress-related.",
-            ];
-            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+        try {
+            // Real Backend Call
+            const response = await fetch(API_ENDPOINTS.CHAT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: userMsgText }),
+            });
 
-            const newLunaMessage: Message = {
+            const data = await response.json();
+
+            if (data.success) {
+                const newLunaMessage: Message = {
+                    id: (Date.now() + 1).toString(),
+                    text: data.response,
+                    sender: 'luna',
+                    timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, newLunaMessage]);
+
+                // Play audio ONLY if requested (Voice Mode)
+                if (shouldSpeak) {
+                    playResponseAudio(data.response);
+                }
+            } else {
+                throw new Error(data.error || "Failed to get response");
+            }
+        } catch (error) {
+            console.error("Chat Error:", error);
+            const errorMessage: Message = {
                 id: (Date.now() + 1).toString(),
-                text: randomResponse,
+                text: "I'm having a little trouble connecting to my brain right now. 🧠💤 Can you try again?",
                 sender: 'luna',
                 timestamp: new Date(),
             };
-
+            setMessages(prev => [...prev, errorMessage]);
+        } finally {
             setIsTyping(false);
-            setMessages(prev => [...prev, newLunaMessage]);
-        }, 2000);
+        }
     };
 
     useEffect(() => {
@@ -134,7 +309,7 @@ export const ChatbotScreen = () => {
 
     return (
         <ScreenWrapper>
-            {/* Voice Mode Modal */}
+            {/* Voice Mode Modal - Simplified for TTS */}
             <Modal
                 animationType="fade"
                 transparent={true}
@@ -150,28 +325,35 @@ export const ChatbotScreen = () => {
                     </TouchableOpacity>
 
                     <View style={styles.voiceContent}>
-                        <LunaMascot size="large" mode="listening" />
+                        <LunaMascot size="large" mode={isSpeaking ? "analyzing" : "listening"} />
 
                         <Text style={styles.voicePrompt}>
-                            Go ahead, I'm listening...
+                            {recording ? "Listening..." : (isSpeaking ? "Luna is speaking..." : "Hold button to speak")}
                         </Text>
 
                         <Animated.Text entering={FadeInUp.delay(1000)} style={styles.voiceTranscript}>
-                            "My energy levels have been really low lately..."
+                            {isSpeaking ? "🔊 Playing audio..." : (recording ? "🎤 Recording..." : "Press and hold the mic to talk")}
                         </Animated.Text>
                     </View>
 
                     <View style={styles.voiceControls}>
-                        <View style={[styles.controlButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                            <Ionicons name="keypad" size={24} color={COLORS.white} />
-                        </View>
+                        <TouchableOpacity
+                            style={[styles.controlButton, { backgroundColor: speakEnabled ? COLORS.primary : 'rgba(255,255,255,0.2)' }]}
+                            onPress={() => setSpeakEnabled(!speakEnabled)}
+                        >
+                            <Ionicons name={speakEnabled ? "volume-high" : "volume-mute"} size={24} color={COLORS.white} />
+                        </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.mainMicButton}>
-                            <Ionicons name="mic" size={32} color={COLORS.white} />
+                        <TouchableOpacity
+                            style={[styles.mainMicButton, recording ? { backgroundColor: '#FF4081' } : {}]}
+                            onPressIn={startRecording}
+                            onPressOut={stopRecording}
+                        >
+                            <Ionicons name={recording ? "mic" : "mic-outline"} size={32} color={COLORS.white} />
                         </TouchableOpacity>
 
                         <View style={[styles.controlButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                            <Ionicons name="close" size={24} color={COLORS.white} />
+                            <Ionicons name="settings" size={24} color={COLORS.white} />
                         </View>
                     </View>
                 </View>
@@ -239,7 +421,7 @@ export const ChatbotScreen = () => {
                     />
                     <TouchableOpacity
                         style={[styles.sendButton, { opacity: inputText.trim() ? 1 : 0.5 }]}
-                        onPress={sendMessage}
+                        onPress={() => sendMessage(undefined, false)}
                         disabled={!inputText.trim()}
                     >
                         <LinearGradient
@@ -448,6 +630,33 @@ const styles = StyleSheet.create({
         justifyContent: 'space-evenly',
         width: '100%',
         marginBottom: 60,
+    },
+    voiceInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1C1C23',
+        borderRadius: 25,
+        paddingHorizontal: 15,
+        paddingVertical: 5,
+        width: '85%',
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    voiceInput: {
+        flex: 1,
+        color: COLORS.white,
+        fontSize: 16,
+        paddingVertical: 12,
+    },
+    voiceSendButton: {
+        marginLeft: 10,
+        backgroundColor: COLORS.primary,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     controlButton: {
         width: 50,

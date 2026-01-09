@@ -12,7 +12,7 @@ import { DiagnosisUploadScreen } from '../screens/DiagnosisUploadScreen';
 import { PermissionsScreen } from '../screens/PermissionsScreen';
 import { ProfileSetupScreen } from '../screens/ProfileSetupScreen';
 import { HomeScreen } from '../screens/HomeScreen';
-import { MealScanScreen } from '../screens/MealScanScreen';
+import MealScanScreen from '../screens/MealScanScreen';
 import { AnalysisScreen } from '../screens/AnalysisScreen';
 import { CommunityScreen } from '../screens/CommunityScreen';
 import { ChatbotScreen } from '../screens/ChatbotScreen';

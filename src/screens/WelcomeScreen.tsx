@@ -33,7 +33,15 @@ export const WelcomeScreen = () => {
 
                 <TouchableOpacity
                     style={styles.button}
-                    onPress={() => navigation.navigate('DiagnosisUpload')}
+                    onPress={() => {
+                        console.log("Get Started Pressed");
+                        try {
+                            navigation.navigate('DiagnosisUpload');
+                        } catch (e) {
+                            console.error("Navigation failed:", e);
+                        }
+                    }}
+                    activeOpacity={0.8}
                 >
                     <Text style={styles.buttonText}>Get Started</Text>
                 </TouchableOpacity>

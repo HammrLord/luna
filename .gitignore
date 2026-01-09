@@ -1,4 +1,4 @@
-# node_modules
+# Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -31,10 +31,11 @@ yarn-error.*
 *.pem
 
 # Local env files
-.env*.local
 .env
+.env*.local
 .env.development
 .env.production
+backend/.env
 
 # TypeScript
 *.tsbuildinfo
@@ -55,6 +56,7 @@ __pycache__/
 venv/
 env/
 ENV/
+.venv/
 
 # Azure
 .azure/
@@ -80,3 +82,24 @@ dist/
 # Temporary files
 tmp/
 temp/
+
+# Gemini agent
+.gemini/
+
+# Generated reports
+*.pdf
+
+# Android/iOS build folders
+android/
+ios/
+
+# Expo EAS
+.eas/
+
+# Cache
+.cache/
+.turbo/
+.parcel-cache/
+
+# Lock files in subdirectories (keep root ones)
+# backend/package-lock.json

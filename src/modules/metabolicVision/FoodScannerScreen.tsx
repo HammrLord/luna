@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
+import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { API_ENDPOINTS } from '../services/api.config';
+import { LinearGradient } from 'expo-linear-gradient';
+import { API_ENDPOINTS } from '../../services/api.config';
 
-export default function MealScanScreen() {
+export default function FoodScannerScreen() {
     const [hasPermission, setHasPermission] = useState<boolean | null>(null);
     const [image, setImage] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -12,7 +14,7 @@ export default function MealScanScreen() {
 
     useEffect(() => {
         (async () => {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            const { status } = await Camera.requestCameraPermissionsAsync();
             setHasPermission(status === 'granted');
         })();
     }, []);
@@ -32,19 +34,12 @@ export default function MealScanScreen() {
         }
     };
 
-    const takePhoto = async () => {
-        // Launch camera
-        let result = await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.5,
-            base64: true,
-        });
-
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            setImage(result.assets[0].uri);
-            analyzeFood(result.assets[0].base64);
-        }
+    const takePicture = async () => {
+        // In a real app, you'd use the camera ref here. 
+        // For simplicity in this demo, let's stick to picker or add full camera logic if requested.
+        // Assuming we want picker mainly for emulator/ease.
+        Alert.alert("Feature", "Camera integration requires physical device or configured emulator. Using gallery for now.");
+        pickImage();
     };
 
     const analyzeFood = async (base64: string | undefined | null) => {
@@ -77,57 +72,11 @@ export default function MealScanScreen() {
         }
     };
 
-    // Generate contextual recommendations based on analysis
-    const getContextualRecommendation = () => {
-        if (!analysis) return null;
-
-        const tips: string[] = [];
-        const stats = analysis.metabolicStats;
-        const pcos = analysis.pcosCompatibility;
-
-        // Fiber recommendation
-        if (stats?.totalFiberg && stats.totalFiberg < 10) {
-            tips.push("🥗 This meal is low in fiber. Consider adding leafy greens or chia seeds to stabilize blood sugar.");
-        } else if (stats?.totalFiberg >= 15) {
-            tips.push("✅ Great fiber content! High fiber helps regulate insulin and keeps you fuller longer.");
-        }
-
-        // Protein recommendation
-        if (stats?.totalProteing && stats.totalProteing < 15) {
-            tips.push("🍳 Add more protein (eggs, paneer, dal) to balance hormones and reduce cravings.");
-        } else if (stats?.totalProteing >= 25) {
-            tips.push("💪 Excellent protein! This supports muscle health and hormone production.");
-        }
-
-        // GI recommendation
-        if (stats?.glycemicIndex === 'High') {
-            tips.push("⚠️ High glycemic load detected. Pair with healthy fats or fiber to slow glucose absorption.");
-        } else if (stats?.glycemicIndex === 'Low') {
-            tips.push("🎯 Low GI meal! Perfect for maintaining steady energy and insulin levels.");
-        }
-
-        // PCOS specific
-        if (pcos?.status === 'Safe') {
-            tips.push("🌸 This meal supports hormonal balance. Keep up the good choices!");
-        } else if (pcos?.status === 'Avoid') {
-            tips.push("🚫 Consider replacing processed items with whole foods for better PCOS management.");
-        }
-
-        return tips.length > 0 ? tips : [analysis.feedback?.improvementTip || "Try to include more vegetables and protein in your meals."];
-    };
-
     if (hasPermission === null) {
         return <View style={styles.container}><Text>Requesting permissions...</Text></View>;
     }
     if (hasPermission === false) {
-        return (
-            <View style={styles.container}>
-                <Text>Camera permission is required</Text>
-                <TouchableOpacity style={styles.button} onPress={() => ImagePicker.requestCameraPermissionsAsync()}>
-                    <Text style={styles.buttonText}>Grant Permission</Text>
-                </TouchableOpacity>
-            </View>
-        );
+        return <View style={styles.container}><Text>No access to camera</Text></View>;
     }
 
     return (
@@ -154,12 +103,12 @@ export default function MealScanScreen() {
                 <View style={styles.controls}>
                     <TouchableOpacity style={styles.button} onPress={pickImage}>
                         <Ionicons name="images-outline" size={24} color="#FFF" />
-                        <Text style={styles.buttonText}>Gallery</Text>
+                        <Text style={styles.buttonText}>Upload Photo</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.button, styles.cameraButton]} onPress={takePhoto}>
+                    <TouchableOpacity style={[styles.button, styles.cameraButton]} onPress={takePicture}>
                         <Ionicons name="camera-outline" size={24} color="#FFF" />
-                        <Text style={styles.buttonText}>Camera</Text>
+                        <Text style={styles.buttonText}>Scan Meal</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -175,22 +124,6 @@ export default function MealScanScreen() {
                 {analysis && !loading && (
                     <View style={styles.resultContainer}>
 
-                        {/* Identified Food Items */}
-                        {analysis.identification?.components?.length > 0 && (
-                            <View style={styles.foodItemsContainer}>
-                                <Text style={styles.sectionTitle}>🍽️ Identified Foods</Text>
-                                <View style={styles.foodChipsContainer}>
-                                    {analysis.identification.components.map((item: string, index: number) => (
-                                        <View key={index} style={styles.foodChip}>
-                                            <Text style={styles.foodChipText}>{item}</Text>
-                                        </View>
-                                    ))}
-                                </View>
-                                <Text style={styles.dishName}>{analysis.identification.mainDish}</Text>
-                                <Text style={styles.caloriesText}>~{analysis.identification.approxCalories} kcal</Text>
-                            </View>
-                        )}
-
                         {/* Overall Compatibility Score */}
                         <View style={styles.scoreCard}>
                             <Text style={styles.scoreLabel}>PCOS Support Score</Text>
@@ -200,10 +133,7 @@ export default function MealScanScreen() {
                             </View>
                             <Text style={[
                                 styles.statusText,
-                                {
-                                    color: analysis.pcosCompatibility?.status === 'Safe' ? '#4CAF50' :
-                                        analysis.pcosCompatibility?.status === 'Caution' ? '#FF9800' : '#FF5722'
-                                }
+                                { color: analysis.pcosCompatibility?.status === 'Safe' ? '#4CAF50' : '#FF5722' }
                             ]}>
                                 {analysis.pcosCompatibility?.status}
                             </Text>
@@ -212,13 +142,8 @@ export default function MealScanScreen() {
                         {/* Stats Grid */}
                         <View style={styles.statsGrid}>
                             <View style={styles.statBox}>
-                                <Text style={styles.statLabel}>Glycemic Index</Text>
-                                <Text style={[styles.statValue,
-                                {
-                                    color: analysis.metabolicStats?.glycemicIndex === 'Low' ? '#4CAF50' :
-                                        analysis.metabolicStats?.glycemicIndex === 'Medium' ? '#FF9800' : '#FF5722'
-                                }
-                                ]}>{analysis.metabolicStats?.glycemicIndex}</Text>
+                                <Text style={styles.statLabel}>Glycemic Load</Text>
+                                <Text style={styles.statValue}>{analysis.metabolicStats?.glycemicLoad}</Text>
                             </View>
                             <View style={styles.statBox}>
                                 <Text style={styles.statLabel}>Insulin Risk</Text>
@@ -232,24 +157,12 @@ export default function MealScanScreen() {
                                 <Text style={styles.statLabel}>Net Carbs</Text>
                                 <Text style={styles.statValue}>{analysis.metabolicStats?.netCarbsg}g</Text>
                             </View>
-                            <View style={styles.statBox}>
-                                <Text style={styles.statLabel}>Fiber</Text>
-                                <Text style={styles.statValue}>{analysis.metabolicStats?.totalFiberg}g</Text>
-                            </View>
-                            <View style={styles.statBox}>
-                                <Text style={styles.statLabel}>Total Carbs</Text>
-                                <Text style={styles.statValue}>{analysis.metabolicStats?.totalCarbsg}g</Text>
-                            </View>
                         </View>
 
-                        {/* Contextual Recommendations */}
-                        <View style={styles.recommendationsContainer}>
-                            <Text style={styles.sectionTitle}>💡 Personalized Tips</Text>
-                            {getContextualRecommendation()?.map((tip, index) => (
-                                <View key={index} style={styles.tipCard}>
-                                    <Text style={styles.tipText}>{tip}</Text>
-                                </View>
-                            ))}
+                        {/* Recommendation */}
+                        <View style={styles.feedbackContainer}>
+                            <Text style={styles.feedbackTitle}>💡 AI Recommendation</Text>
+                            <Text style={styles.feedbackText}>{analysis.feedback?.improvementTip}</Text>
                         </View>
 
                         {/* Issues List */}
@@ -258,16 +171,6 @@ export default function MealScanScreen() {
                                 <Text style={styles.issuesTitle}>⚠️ Attention Needed</Text>
                                 {analysis.pcosCompatibility.issues.map((issue: string, index: number) => (
                                     <Text key={index} style={styles.issueText}>• {issue}</Text>
-                                ))}
-                            </View>
-                        )}
-
-                        {/* Positives */}
-                        {analysis.pcosCompatibility?.positives?.length > 0 && (
-                            <View style={styles.positivesContainer}>
-                                <Text style={styles.positivesTitle}>✅ Good Choices</Text>
-                                {analysis.pcosCompatibility.positives.map((positive: string, index: number) => (
-                                    <Text key={index} style={styles.positiveText}>• {positive}</Text>
                                 ))}
                             </View>
                         )}
@@ -287,11 +190,9 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20,
     },
     scrollContent: {
         padding: 20,
-        paddingBottom: 120, // Extra padding for tab bar
     },
     header: {
         marginBottom: 20,
@@ -309,7 +210,7 @@ const styles = StyleSheet.create({
     },
     imageContainer: {
         width: '100%',
-        height: 220,
+        height: 250,
         borderRadius: 20,
         backgroundColor: '#FFF',
         overflow: 'hidden',
@@ -373,55 +274,10 @@ const styles = StyleSheet.create({
         padding: 20,
         marginTop: 10,
         elevation: 2,
-        marginBottom: 20,
-    },
-    sectionTitle: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 12,
-    },
-    foodItemsContainer: {
-        marginBottom: 20,
-        alignItems: 'center',
-    },
-    foodChipsContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
-        gap: 8,
-        marginBottom: 12,
-    },
-    foodChip: {
-        backgroundColor: '#E8F5E9',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#81C784',
-    },
-    foodChipText: {
-        color: '#2E7D32',
-        fontSize: 13,
-        fontWeight: '500',
-    },
-    dishName: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-        marginTop: 8,
-    },
-    caloriesText: {
-        fontSize: 14,
-        color: '#666',
-        marginTop: 4,
     },
     scoreCard: {
         alignItems: 'center',
         marginBottom: 20,
-        paddingVertical: 15,
-        backgroundColor: '#FAFAFA',
-        borderRadius: 12,
     },
     scoreLabel: {
         fontSize: 14,
@@ -458,7 +314,7 @@ const styles = StyleSheet.create({
     },
     statBox: {
         width: '48%',
-        marginBottom: 12,
+        marginBottom: 10,
         alignItems: 'center',
     },
     statLabel: {
@@ -471,29 +327,22 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#333',
     },
-    recommendationsContainer: {
+    feedbackContainer: {
         backgroundColor: '#E3F2FD',
         padding: 15,
-        borderRadius: 12,
+        borderRadius: 10,
         marginBottom: 15,
     },
-    tipCard: {
-        backgroundColor: '#FFF',
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 8,
-        borderLeftWidth: 4,
-        borderLeftColor: '#2196F3',
+    feedbackTitle: {
+        color: '#1976D2',
+        fontWeight: 'bold',
+        marginBottom: 5,
     },
-    tipText: {
-        color: '#333',
-        fontSize: 14,
+    feedbackText: {
+        color: '#0D47A1',
         lineHeight: 20,
     },
     issuesContainer: {
-        backgroundColor: '#FFEBEE',
-        padding: 15,
-        borderRadius: 12,
         marginTop: 10,
     },
     issuesTitle: {
@@ -504,23 +353,6 @@ const styles = StyleSheet.create({
     },
     issueText: {
         color: '#B71C1C',
-        marginBottom: 4,
-        fontSize: 14,
-    },
-    positivesContainer: {
-        backgroundColor: '#E8F5E9',
-        padding: 15,
-        borderRadius: 12,
-        marginTop: 10,
-    },
-    positivesTitle: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#2E7D32',
-        marginBottom: 8,
-    },
-    positiveText: {
-        color: '#1B5E20',
         marginBottom: 4,
         fontSize: 14,
     },

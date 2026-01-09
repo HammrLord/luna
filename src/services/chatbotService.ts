@@ -12,6 +12,7 @@
  */
 
 import { supabase } from '../lib/supabaseClient';
+import { API_BASE_URL } from './api.config';
 
 interface ChatMessage {
     role: 'user' | 'assistant';
@@ -26,7 +27,7 @@ interface ChatSession {
 }
 
 export class ChatbotService {
-    private static API_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+    private static API_URL = API_BASE_URL;
 
     /**
      * Create a new chat session

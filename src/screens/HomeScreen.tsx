@@ -1,15 +1,31 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { LunaMascot } from '../components/LunaMascot';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useUser } from '../context/UserContext';
+import { generateMedicalReport } from '../services/ReportService';
 // ... items ...
+
 
 export const HomeScreen = () => {
     const { userName, sentinelMode, toggleStressMode } = useUser();
+    const [isGenerating, setIsGenerating] = React.useState(false);
+
+    const handleGenerateReport = async () => {
+        if (isGenerating) return;
+        setIsGenerating(true);
+        try {
+            await generateMedicalReport();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            // Small delay to ensure share sheet is fully dismissed/handled before re-enabling
+            setTimeout(() => setIsGenerating(false), 1000);
+        }
+    };
 
     return (
         <ScreenWrapper>
@@ -65,6 +81,28 @@ export const HomeScreen = () => {
                     <Text style={styles.insightText}>
                         Your sleep regularity has improved by 15% this week. This stabilizes your cortisol levels.
                     </Text>
+                </TouchableOpacity>
+
+                {/* Clinical Report Action */}
+                <TouchableOpacity
+                    style={[styles.reportButton, isGenerating && { opacity: 0.7 }]}
+                    onPress={handleGenerateReport}
+                    activeOpacity={0.8}
+                    disabled={isGenerating}
+                >
+                    <View style={styles.reportIconBox}>
+                        {isGenerating ?
+                            <ActivityIndicator color={COLORS.white} /> :
+                            <Ionicons name="medical" size={24} color={COLORS.white} />
+                        }
+                    </View>
+                    <View style={styles.reportContent}>
+                        <Text style={styles.reportTitle}>
+                            {isGenerating ? 'Generating PDF...' : 'Generate Clinical Report'}
+                        </Text>
+                        <Text style={styles.reportSubtitle}>Summary for Doctor Review</Text>
+                    </View>
+                    {!isGenerating && <Ionicons name="download-outline" size={24} color={COLORS.white} />}
                 </TouchableOpacity>
 
             </ScrollView>
@@ -193,6 +231,37 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontSize: 15,
         lineHeight: 22,
+        opacity: 0.9,
+    },
+    reportButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.secondary,
+        borderRadius: BORDER_RADIUS.xl,
+        padding: SPACING.m,
+        marginTop: SPACING.l,
+        ...SHADOWS.soft,
+    },
+    reportIconBox: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: SPACING.m,
+    },
+    reportContent: {
+        flex: 1,
+    },
+    reportTitle: {
+        color: COLORS.white,
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    reportSubtitle: {
+        color: COLORS.white,
+        fontSize: 12,
         opacity: 0.9,
     },
 });
